@@ -41,15 +41,3 @@ The Clade tool supports the following commands:
 4. `gtdb`: Download and process GTDB data
 
 Example usage:
-
-## Installation
-
-[Add installation instructions here]
-
-## Contributing
-
-[Add contribution guidelines here]
-
-## License
-
-[Add license information here]
