@@ -9,9 +9,17 @@ authors = ["dagou <eric9n@gmail.com>"]
 repository = "https://github.com/eric9n/clade"
 readme = "README.md"
 
-
 [dependencies]
 reqwest = { version = "0.12", features = ["blocking", "multipart", "gzip"] }
 flate2 = "1.0"
 tar = "0.4"
+regex = "1.5"
+chrono = "0.4"
 clap = { version = "4.0", features = ["derive"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+gtdb_tree = "0.1.8"
+
+
+[[bin]]
+name = "clade"
+path = "src/main.rs"
