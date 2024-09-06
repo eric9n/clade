@@ -45,8 +45,14 @@ enum GtdbSubCommand {
     #[clap(about = "List all GTDB release versions")]
     List,
     #[clap(about = "Download GTDB data files and parse metadata")]
-    // Build,
-    // #[clap(about = "Download GTDB data files")]
+    #[clap(about = "Download and parse GTDB data")]
+    Sync {
+        #[clap(
+            long = "version",
+            help = "The version of the GTDB release to download and parse"
+        )]
+        version: Option<String>,
+    },
     Download {
         #[clap(
             long = "version",
@@ -69,21 +75,23 @@ fn main() -> Result<(), Box<dyn Error>> {
     match args.cmd {
         Command::Update => update_taxdump(&taxo_path)?,
         Command::Gtdb { subcmd } => match subcmd {
+            GtdbSubCommand::Sync { version } => {
+                let sub_version_info = list_releases(false, version)?;
+                println!(
+                    "Downloading sub-version: {}, url: {}",
+                    &sub_version_info.version, sub_version_info.url
+                );
+                let sub_version_path = taxo_path.join(&sub_version_info.version);
+                let files = get_sub_version_files(&sub_version_info.url)?;
+
+                download_gtdb_data(&sub_version_path, &files)?;
+                let domain_files = parse_domain_files(&sub_version_path)?;
+                let db = taxo_path.join(format!("{}.db", sub_version_info.version));
+                parse_metadata(&db, &domain_files)?;
+                parse_tree(&db, &domain_files)?;
+            }
             GtdbSubCommand::Download { version } => {
-                let sub_versions = list_releases(false)?;
-                let sub_version_info = if let Some(sub_version) = version {
-                    sub_versions
-                        .iter()
-                        .find(|v| v.version == sub_version)
-                        .ok_or(format!("Sub-version {} not found", sub_version))?
-                        .clone() // Clone the URL to avoid moving out of the reference
-                } else {
-                    sub_versions
-                        .iter()
-                        .max_by_key(|v| v.date)
-                        .ok_or("No sub-versions available")?
-                        .clone()
-                };
+                let sub_version_info = list_releases(false, version)?;
                 println!(
                     "Downloading sub-version: {}, url: {}",
                     sub_version_info.version, sub_version_info.url
@@ -100,7 +108,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 parse_tree(&db, &domain_files)?;
             }
             GtdbSubCommand::List => {
-                let _ = list_releases(true)?;
+                let _ = list_releases(true, None)?;
             }
         },
         Command::Generate => ncbi::print_taxonomy_summary(&taxo_path)?,

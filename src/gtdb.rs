@@ -28,7 +28,8 @@ pub struct SubVersionInfo {
 /// List all GTDB release versions and their sub-versions, and save to file if not exists.
 pub fn list_releases(
     should_print: bool,
-) -> Result<Vec<SubVersionInfo>, Box<dyn std::error::Error>> {
+    target_sub_version: Option<String>,
+) -> Result<SubVersionInfo, Box<dyn std::error::Error>> {
     let client = Client::new();
     let base_url = "https://data.gtdb.ecogenomic.org/releases/";
     let response = client.get(base_url).send()?.text()?;
@@ -65,10 +66,6 @@ pub fn list_releases(
         let sub = get_sub_versions(&client, &release_url)?;
         sub_versions.extend(sub.clone());
         info.sub_versions = sub.clone();
-        // for sub_version in &mut info.sub_versions {
-        //     let files = get_sub_version_files(&client, &sub_version.url)?;
-        //     domain_files.insert(sub_version.version.clone(), files);
-        // }
     }
     let mut sorted_releases: Vec<_> = releases.into_iter().collect();
     sorted_releases.sort_by(|a, b| b.1.date.cmp(&a.1.date));
@@ -76,7 +73,22 @@ pub fn list_releases(
     if should_print {
         print_releases(&sorted_releases);
     }
-    Ok(sub_versions)
+
+    let sub_version_info = if let Some(sub_version) = target_sub_version {
+        sub_versions
+            .iter()
+            .find(|v| v.version == sub_version)
+            .ok_or(format!("Sub-version {} not found", sub_version))?
+            .clone() // Clone the URL to avoid moving out of the reference
+    } else {
+        sub_versions
+            .iter()
+            .max_by_key(|v| v.date)
+            .ok_or("No sub-versions available")?
+            .clone()
+    };
+
+    Ok(sub_version_info)
 }
 
 /// Get sub-versions for a specific release.
