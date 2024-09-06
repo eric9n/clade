@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, Error, Result};
+use rusqlite::{params, Connection, Result};
 
 pub fn create_tables(conn: &Connection) -> Result<()> {
     create_genome_taxonomy_table(conn)?;
@@ -99,35 +99,6 @@ fn create_gtdb_tree_table(conn: &Connection, table_name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Inserts taxonomy data into the specified table.
-pub fn insert_taxonomy(
-    conn: &Connection,
-    domain: &str,
-    node_id: &str,
-    parent: &str,
-    ncbi_taxid: Option<i64>,
-    ancestor_sequence: &str,
-    ncbi_id: &str,
-    rank: &str,
-) -> Result<()> {
-    let query = "INSERT INTO genome_taxonomy (node, parent, ncbi_taxid, ancestor_sequence, ncbi_id, rank, domain)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)";
-
-    conn.execute(
-        query,
-        params![
-            node_id,
-            parent,
-            ncbi_taxid,
-            ancestor_sequence,
-            ncbi_id,
-            rank,
-            domain
-        ],
-    )?;
-    Ok(())
-}
-
 /// Inserts taxonomy data into the specified table in batch, ignoring conflicts.
 pub fn batch_insert_taxonomy(
     conn: &mut Connection,
@@ -190,35 +161,4 @@ pub fn batch_insert_gtdb_tree(
 
     tx.commit()?;
     Ok(())
-}
-
-/// Inserts gtdb_tree data into the specified table.
-pub fn insert_gtdb_tree(
-    conn: &Connection,
-    table_name: &str,
-    node: usize,
-    parent: usize,
-    name: &str,
-    length: f64,
-    bootstrap: f64,
-) -> Result<()> {
-    let query = format!(
-        "INSERT INTO {} (node, parent, name, length, bootstrap) VALUES (?1, ?2, ?3, ?4, ?5)",
-        table_name
-    );
-
-    conn.execute(&query, params![node, parent, name, length, bootstrap])?;
-    Ok(())
-}
-
-pub fn node_exists(conn: &Connection, domain: &str, node: &str) -> Result<bool> {
-    let query = "SELECT 1 FROM genome_taxonomy WHERE domain = ?1 AND node = ?2 LIMIT 1";
-    match conn.query_row(query, params![domain, node], |_| Ok(())) {
-        Ok(_) => Ok(true),
-        Err(Error::QueryReturnedNoRows) => Ok(false),
-        Err(Error::SqliteFailure(_, Some(msg))) if msg.contains("no such column: node") => {
-            Ok(false)
-        }
-        Err(e) => Err(e),
-    }
 }
