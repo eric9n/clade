@@ -50,7 +50,7 @@ enum GtdbSubCommand {
     Download {
         #[clap(
             long = "version",
-            help = "The ersion of the GTDB release to download, default to the latest version"
+            help = "The ersion of the GTDB release to download, default to the latest version, format: 220.0, 214.0, etc. must be a sub-version"
         )]
         version: Option<String>,
     },
@@ -84,7 +84,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                         .ok_or("No sub-versions available")?
                         .clone()
                 };
-                println!("Downloading sub-version: {}", sub_version_info.url);
+                println!(
+                    "Downloading sub-version: {}, url: {}",
+                    sub_version_info.version, sub_version_info.url
+                );
                 let sub_version_path = taxo_path.join(sub_version_info.version);
                 let files = get_sub_version_files(&sub_version_info.url)?;
 

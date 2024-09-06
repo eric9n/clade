@@ -11,7 +11,7 @@ pub fn create_genome_taxonomy_table(conn: &Connection) -> Result<()> {
     conn.execute(
         "CREATE TABLE genome_taxonomy (
             id INTEGER PRIMARY KEY,
-            node TEXT NOT NULL,
+            node TEXT NOT NULL UNIQUE,
             parent TEXT NOT NULL,
             ncbi_taxid INTEGER,
             ancestor_sequence TEXT NOT NULL,
@@ -125,6 +125,70 @@ pub fn insert_taxonomy(
             domain
         ],
     )?;
+    Ok(())
+}
+
+/// Inserts taxonomy data into the specified table in batch, ignoring conflicts.
+pub fn batch_insert_taxonomy(
+    conn: &mut Connection,
+    taxonomies: &Vec<(String, String, Option<i64>, String, String, String, String)>,
+) -> Result<()> {
+    let tx = conn.transaction()?;
+
+    {
+        let mut stmt = tx.prepare(
+            "
+            INSERT OR IGNORE INTO genome_taxonomy
+            (node, parent, ncbi_taxid, ancestor_sequence, ncbi_id, rank, domain)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        ",
+        )?;
+
+        for taxonomy in taxonomies {
+            stmt.execute(params![
+                &taxonomy.0, // node
+                &taxonomy.1, // parent
+                taxonomy.2,  // ncbi_taxid
+                &taxonomy.3, // ancestor_sequence
+                &taxonomy.4, // ncbi_id
+                &taxonomy.5, // rank
+                &taxonomy.6, // domain
+            ])?;
+        }
+    }
+
+    tx.commit()?;
+    Ok(())
+}
+
+/// Inserts GTDB tree data into the specified table in batch, ignoring conflicts.
+pub fn batch_insert_gtdb_tree(
+    conn: &mut Connection,
+    table_name: &str,
+    trees: &Vec<(usize, usize, String, f64, f64)>,
+) -> Result<()> {
+    let tx = conn.transaction()?;
+
+    {
+        let query = format!(
+            "INSERT OR IGNORE INTO {} (node, parent, name, length, bootstrap) VALUES (?1, ?2, ?3, ?4, ?5)",
+            table_name
+        );
+
+        let mut stmt = tx.prepare(&query)?;
+
+        for tree in trees {
+            stmt.execute(params![
+                tree.0,  // node
+                tree.1,  // parent
+                &tree.2, // name
+                tree.3,  // length
+                tree.4,  // bootstrap
+            ])?;
+        }
+    }
+
+    tx.commit()?;
     Ok(())
 }
 

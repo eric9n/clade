@@ -10,6 +10,7 @@ use std::fs::OpenOptions;
 use std::fs::{self, File};
 use std::io::{self, BufRead, Read};
 use std::path::PathBuf;
+
 #[derive(Debug, Clone)]
 pub struct ReleaseInfo {
     pub version: String,
@@ -236,17 +237,22 @@ pub fn download_gtdb_data(taxo_path: &PathBuf, files: &Vec<DomainFile>) -> io::R
 
         // If the file is a .gz file, decompress it
         if file_name.ends_with(".gz") {
-            let gz_file = File::open(&output_path)?;
-            let mut gz_decoder = GzDecoder::new(gz_file);
-            let decompressed_file_name = file_name.trim_end_matches(".gz");
-            let decompressed_path = taxo_path.join(decompressed_file_name);
-            let mut decompressed_file = OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(&decompressed_path)?;
-            io::copy(&mut gz_decoder, &mut decompressed_file)?;
-
+            if file_name.ends_with(".tar.gz") {
+                let tar_gz_file = File::open(&output_path)?;
+                let mut archive = tar::Archive::new(GzDecoder::new(tar_gz_file));
+                archive.unpack(&taxo_path)?; // Extract to the specified directory
+            } else {
+                let gz_file = File::open(&output_path)?;
+                let mut gz_decoder = GzDecoder::new(gz_file);
+                let decompressed_file_name = file_name.trim_end_matches(".gz");
+                let decompressed_path = taxo_path.join(decompressed_file_name);
+                let mut decompressed_file = OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(&decompressed_path)?;
+                io::copy(&mut gz_decoder, &mut decompressed_file)?;
+            }
             fs::remove_file(&output_path)?; // Remove the .gz file after extraction
         }
     }
@@ -257,9 +263,9 @@ pub fn download_gtdb_data(taxo_path: &PathBuf, files: &Vec<DomainFile>) -> io::R
 /// Parses the metadata files and inserts data into the SQLite database.
 pub fn parse_metadata(db: &PathBuf, domain_files: &Vec<DomainFile>) -> io::Result<()> {
     println!("Parsing metadata");
-    let conn = Connection::open(db).expect("failed to open database");
+    let mut conn = Connection::open(db).expect("failed to open database");
     // Create tables if they don't exist
-    crate::db::create_genome_taxonomy_table(&conn).expect("failed to create tables");
+    crate::db::create_genome_taxonomy_table(&mut conn).expect("failed to create tables");
 
     for domain_file in domain_files.iter() {
         let (path, domain) = match domain_file {
@@ -275,16 +281,35 @@ pub fn parse_metadata(db: &PathBuf, domain_files: &Vec<DomainFile>) -> io::Resul
         let reader = io::BufReader::new(file);
         let mut lines = reader.lines();
 
-        // Skip the header
-        lines.next();
+        // Read and parse the header
+        let header = lines
+            .next()
+            .expect("Empty file")
+            .expect("Failed to read line");
+        let header_fields: Vec<&str> = header.split('\t').collect();
 
+        // Find the indices of the columns we're interested in
+        let accession_index = header_fields
+            .iter()
+            .position(|&r| r == "accession")
+            .expect("Accession column not found");
+        let taxonomy_index = header_fields
+            .iter()
+            .position(|&r| r == "gtdb_taxonomy")
+            .expect("GTDB taxonomy column not found");
+        let taxid_index = header_fields
+            .iter()
+            .position(|&r| r == "ncbi_taxid")
+            .expect("NCBI taxid column not found");
+
+        let mut taxonomies = Vec::new();
         for line in lines {
             let line = line?;
             let fields: Vec<&str> = line.split('\t').collect();
 
-            let accession = fields[0];
-            let gtdb_taxonomy = fields[19]; // gtdb_taxonomy is at index 19
-            let ncbi_taxid: Option<i64> = fields[84].parse().ok(); // Assuming ncbi_taxid is at index 84
+            let accession = fields[accession_index];
+            let gtdb_taxonomy = fields[taxonomy_index]; // gtdb_taxonomy is at index 19
+            let ncbi_taxid: Option<i64> = fields[taxid_index].parse().ok(); // Assuming ncbi_taxid is at index 84
 
             // Parse gtdb_taxonomy
             let taxonomy_parts: Vec<&str> = gtdb_taxonomy.split(';').collect();
@@ -296,20 +321,16 @@ pub fn parse_metadata(db: &PathBuf, domain_files: &Vec<DomainFile>) -> io::Resul
                 let parent = if i > 0 { taxonomy_parts[i - 1] } else { "root" };
                 let rank = &node[..3];
 
-                // Check if node already exists in the database
-                if !crate::db::node_exists(&conn, domain, node).expect("node_exists failed") {
-                    crate::db::insert_taxonomy(
-                        &conn,
-                        domain,
-                        node,
-                        parent,
-                        None, // ncbi_taxid is None for internal nodes
-                        &ancestor_sequence,
-                        "",
-                        rank,
-                    )
-                    .expect("insert taxonomy failed");
-                }
+                // Directly push the record to the vector
+                taxonomies.push((
+                    node.to_string(),
+                    parent.to_string(),
+                    None::<i64>, // ncbi_taxid is None for internal nodes
+                    ancestor_sequence.clone(),
+                    "".to_string(),
+                    rank.to_string(),
+                    domain.to_string(),
+                ));
 
                 ancestor_sequence.push_str(node);
                 ancestor_sequence.push(';');
@@ -317,17 +338,27 @@ pub fn parse_metadata(db: &PathBuf, domain_files: &Vec<DomainFile>) -> io::Resul
 
             // Second part: process accession
             let ncbi_id = accession.split('_').last().unwrap_or("");
-            crate::db::insert_taxonomy(
-                &conn,
-                domain,
-                accession,
-                taxonomy_parts.last().unwrap(),
+            taxonomies.push((
+                accession.to_string(),
+                taxonomy_parts.last().unwrap().to_string(),
                 ncbi_taxid,
-                &ancestor_sequence,
-                ncbi_id,
-                "no_rank",
-            )
-            .expect("insert taxonomy failed");
+                ancestor_sequence.clone(),
+                ncbi_id.to_string(),
+                "no_rank".to_string(),
+                domain.to_string(),
+            ));
+
+            // Batch insert every 1000 records
+            if taxonomies.len() >= 1000 {
+                crate::db::batch_insert_taxonomy(&mut conn, &taxonomies)
+                    .expect("batch insert taxonomy failed");
+                taxonomies.clear(); // Clear the vector after batch insert
+            }
+        }
+        // Insert any remaining records
+        if !taxonomies.is_empty() {
+            crate::db::batch_insert_taxonomy(&mut conn, &taxonomies)
+                .expect("batch insert taxonomy failed");
         }
     }
 
@@ -337,7 +368,7 @@ pub fn parse_metadata(db: &PathBuf, domain_files: &Vec<DomainFile>) -> io::Resul
 /// Parses the tree files and inserts data into the SQLite database.
 pub fn parse_tree(db: &PathBuf, domain_files: &Vec<DomainFile>) -> io::Result<()> {
     println!("Parsing tree");
-    let conn = Connection::open(db).expect("failed to open database");
+    let mut conn = Connection::open(db).expect("failed to open database");
 
     crate::db::create_gtdb_tree_tables(&conn, &["archaea", "bacteria"])
         .expect("failed to create tables");
@@ -357,17 +388,21 @@ pub fn parse_tree(db: &PathBuf, domain_files: &Vec<DomainFile>) -> io::Result<()
         let nodes = gtdb_tree::tree::parse_tree(&buffer).expect("Failed to parse tree");
         conn.execute(&format!("DELETE FROM {}", table_name), [])
             .expect(&format!("Failed to truncate table {}", table_name));
+
+        let mut batch = Vec::new();
         for node in nodes {
-            crate::db::insert_gtdb_tree(
-                &conn,
-                table_name,
-                node.id,
-                node.parent,
-                &node.name,
-                node.length,
-                node.bootstrap,
-            )
-            .expect(&format!("Failed to insert gtdb_tree node {}", node.id));
+            batch.push((node.id, node.parent, node.name, node.length, node.bootstrap));
+            // Batch insert every 1000 records
+            if batch.len() >= 1000 {
+                crate::db::batch_insert_gtdb_tree(&mut conn, table_name, &batch)
+                    .expect("Failed to batch insert gtdb_tree nodes");
+                batch.clear(); // Clear the batch after insertion
+            }
+        }
+        // Insert any remaining records
+        if !batch.is_empty() {
+            crate::db::batch_insert_gtdb_tree(&mut conn, table_name, &batch)
+                .expect("Failed to batch insert gtdb_tree nodes");
         }
     }
 
