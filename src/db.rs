@@ -73,7 +73,8 @@ fn create_gtdb_tree_table(conn: &Connection, table_name: &str) -> Result<()> {
             parent INTEGER NOT NULL,
             name TEXT NOT NULL,
             length REAL DEFAULT 0.0,
-            bootstrap REAL DEFAULT 0.0
+            bootstrap REAL DEFAULT 0.0,
+            rank TEXT DEFAULT null
         )",
             table_name
         ),
@@ -159,6 +160,35 @@ pub fn batch_insert_gtdb_tree(
         }
     }
 
+    tx.commit()?;
+    Ok(())
+}
+
+/// base genome_taxonomy table update gtdb_tree_{} table species
+/// gtdb_tree_{} gta table left join genome_taxonomy gt table on gt.node == gta.name update gta.species = gt.parent
+pub fn update_gtdb_tree_species(conn: &mut Connection, table_name: &str) -> Result<()> {
+    let tx = conn.transaction()?;
+
+    // Update species in gtdb_tree_{} table using a JOIN with genome_taxonomy
+    let query = format!(
+        "UPDATE {}
+        SET rank = (
+            SELECT gt.parent
+            FROM genome_taxonomy gt
+            WHERE gt.node = {}.name
+        )
+        WHERE name != '' AND name IN (SELECT node FROM genome_taxonomy where rank = 'no rank');",
+        table_name, table_name
+    );
+
+    let query1 = format!(
+        "UPDATE {}
+        SET rank = name
+        WHERE name != '' AND name IN (SELECT node FROM genome_taxonomy where rank != 'no rank');",
+        table_name
+    );
+    tx.execute(&query, [])?; // Execute the update query
+    tx.execute(&query1, [])?; // Execute the update query
     tx.commit()?;
     Ok(())
 }

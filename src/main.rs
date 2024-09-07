@@ -65,6 +65,18 @@ enum GtdbSubCommand {
         #[clap(long = "version", help = "The version of the GTDB release to parse")]
         version: String,
     },
+    #[clap(about = "Generate Newick format from GTDB database")]
+    Newick {
+        #[clap(short, long, help = "GTDB tree version to generate Newick format")]
+        version: String,
+
+        #[clap(
+            short,
+            long,
+            help = "Input file path to the data that needs to be analyzed, format: GCF_7312312.0,s__Fen731 sp002068775"
+        )]
+        input_file: PathBuf,
+    },
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -109,6 +121,21 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
             GtdbSubCommand::List => {
                 let _ = list_releases(true, None)?;
+            }
+            GtdbSubCommand::Newick {
+                version,
+                input_file,
+            } => {
+                let db = taxo_path.join(format!("{version}.db"));
+                println!("Generating Newick format for GTDB version: {version}");
+                // Read the input file and parse it into a list based on commas
+                let data = std::fs::read_to_string(&input_file)?
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .collect::<Vec<String>>();
+
+                let newick = clade::generate::process_data(data, &db)?;
+                println!("{:?}", newick);
             }
         },
         Command::Generate => ncbi::print_taxonomy_summary(&taxo_path)?,

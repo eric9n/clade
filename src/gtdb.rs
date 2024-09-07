@@ -356,7 +356,7 @@ pub fn parse_metadata(db: &PathBuf, domain_files: &Vec<DomainFile>) -> io::Resul
                 ncbi_taxid,
                 ancestor_sequence.clone(),
                 ncbi_id.to_string(),
-                "no_rank".to_string(),
+                "no rank".to_string(),
                 domain.to_string(),
             ));
 
@@ -416,6 +416,8 @@ pub fn parse_tree(db: &PathBuf, domain_files: &Vec<DomainFile>) -> io::Result<()
             crate::db::batch_insert_gtdb_tree(&mut conn, table_name, &batch)
                 .expect("Failed to batch insert gtdb_tree nodes");
         }
+        crate::db::update_gtdb_tree_species(&mut conn, table_name)
+            .expect("Failed to update gtdb_tree species");
     }
 
     Ok(())
