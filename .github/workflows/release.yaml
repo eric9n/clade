@@ -8,6 +8,7 @@ env:
   PROJECT_NAME: clade
   REPO_NAME: ${{ github.repository }}
   BREW_TAP: eric9n/homebrew-tap
+  DESC: "A tool for phylogenetic tree construction and pruning based on NCBI taxonomy data and GTDB (Genome Taxonomy Database) data."
 
 jobs:
   dist:
@@ -159,6 +160,7 @@ jobs:
           VERSION=${{ steps.extract-version.outputs.tag-name }}
           REPO=${{ env.REPO_NAME }}
           PROJECT=${{ env.PROJECT_NAME }}
+          DESC=${{ env.DESC }}
           X86_64_URL="https://github.com/${REPO}/releases/download/${VERSION}/${PROJECT}-${VERSION}-x86_64-apple-darwin"
           AARCH64_URL="https://github.com/${REPO}/releases/download/${VERSION}/${PROJECT}-${VERSION}-aarch64-apple-darwin"
 
@@ -168,7 +170,7 @@ jobs:
 
           cat > Formula/${PROJECT}.rb <<EOL
           class $(echo $PROJECT | perl -pe 's/(^|-)(\w)/\U$2/g') < Formula
-            desc "A tool for phylogenetic tree construction and pruning based on NCBI taxonomy data and GTDB (Genome Taxonomy Database) data."
+            desc "${DESC}"
             homepage "https://github.com/${REPO}"
             version "${VERSION}"
 
@@ -183,7 +185,14 @@ jobs:
             end
 
             def install
-              bin.install "${PROJECT}"
+              if Hardware::CPU.intel?
+                bin.install "${PROJECT}-#{version}-x86_64-apple-darwin" => "${PROJECT}"
+              else
+                bin.install "${PROJECT}-#{version}-aarch64-apple-darwin" => "${PROJECT}"
+              end
+            end
+            test do
+              system "#{bin}/${PROJECT}", "--version"
             end
           end
           EOL
