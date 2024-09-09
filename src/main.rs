@@ -6,6 +6,7 @@ use clade::ncbi;
 use clade::taxo::{prune_taxonomy, prune_taxonomy_by_names, Taxonomy};
 use clade::update::update_taxdump;
 use clap::{Parser, Subcommand};
+use std::env;
 use std::{error::Error, fs::File, io::Write, path::PathBuf};
 
 #[derive(clap::Parser, Debug)]
@@ -14,8 +15,21 @@ struct Args {
     #[clap(subcommand)]
     pub cmd: Command,
 
-    #[clap(short, long, help = "The path to store the taxdump files")]
+    #[clap(
+        short,
+        long,
+        help = "The path to store the taxdump files",
+        default_value_os_t = default_taxo_path()
+    )]
     pub taxo_path: PathBuf,
+}
+
+fn default_taxo_path() -> PathBuf {
+    env::var_os("HOME")
+        .or_else(|| env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .map(|p| p.join(".clade"))
+        .unwrap_or_else(|| PathBuf::from(".clade"))
 }
 
 #[derive(Subcommand, Debug)]
