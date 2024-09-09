@@ -23,3 +23,12 @@ gtdb_tree = "0.1.9"
 [[bin]]
 name = "clade"
 path = "src/main.rs"
+
+
+[profile.release]
+lto = true
+opt-level = "s" # 或者 "z"
+debug-assertions = false
+# panic = 'abort'
+codegen-units = 1 # Compile crates one after another so the compiler can optimize better
+strip = true # Remove debug symbols
