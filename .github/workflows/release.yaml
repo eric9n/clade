@@ -1,18 +1,13 @@
 name: Release
 on:
-  # schedule:
-  # - cron: '0 0 * * *' # midnight UTC
-
   push:
     tags:
     - 'v[0-9]+.[0-9]+.[0-9]+'
-    ## - release
 
 env:
-  # BIN_NAME: clade
   PROJECT_NAME: clade
-  REPO_NAME: eric9n/clade
-  # BREW_TAP: eric9n/homebrew-tap
+  REPO_NAME: ${{ github.repository }}
+  BREW_TAP: eric9n/homebrew-tap
 
 jobs:
   dist:
@@ -21,43 +16,26 @@ jobs:
     name: Dist
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false # don't fail other jobs if one fails
+      fail-fast: false
       matrix:
-        build: [x86_64-linux, x86_64-macos, x86_64-windows, aarch64-macos] # Added platforms
+        build: [x86_64-linux, x86_64-macos, x86_64-windows, aarch64-macos]
         include:
         - build: x86_64-linux
           os: ubuntu-latest
           rust: stable
           target: x86_64-unknown-linux-gnu
-          cross: false
-        # - build: aarch64-linux
-        #   os: ubuntu-latest
-        #   rust: stable
-        #   target: aarch64-unknown-linux-gnu
-        #   cross: false
         - build: x86_64-macos
           os: macos-latest
           rust: stable
           target: x86_64-apple-darwin
-          cross: false
         - build: x86_64-windows
           os: windows-latest
           rust: stable
           target: x86_64-pc-windows-msvc
-          cross: false
         - build: aarch64-macos
           os: macos-latest
           rust: stable
           target: aarch64-apple-darwin
-          cross: false
-        # - build: x86_64-win-gnu
-        #   os: windows-2019
-        #   rust: stable-x86_64-gnu
-        #   target: x86_64-pc-windows-gnu
-        # - build: win32-msvc
-        #   os: windows-2019
-        #   rust: stable
-        #   target: i686-pc-windows-msvc
 
     steps:
       - name: Checkout sources
@@ -92,9 +70,9 @@ jobs:
         run: |
           mkdir dist
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp "target/${{ matrix.target }}/release/${{ matrix.target }}.exe" "dist/"
+            cp "target/${{ matrix.target }}/release/${{ env.PROJECT_NAME }}.exe" "dist/${{ env.PROJECT_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.exe"
           else
-            cp "target/${{ matrix.target }}/release/${{ matrix.target }}" "dist/"
+            cp "target/${{ matrix.target }}/release/${{ env.PROJECT_NAME }}" "dist/${{ env.PROJECT_NAME }}-${{ github.ref_name }}-${{ matrix.target }}"
           fi
 
       # Set up the GitHub CLI
@@ -119,118 +97,99 @@ jobs:
 
       - name: Upload Release Asset
         run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            ASSET_NAME="${{ env.PROJECT_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.exe"
+          else
+            ASSET_NAME="${{ env.PROJECT_NAME }}-${{ github.ref_name }}-${{ matrix.target }}"
+          fi
           gh release upload ${{ github.ref_name }} \
-            "./dist/${{ matrix.target }}" \
+            "./dist/$ASSET_NAME" \
             --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
 
-  #     - uses: actions/upload-artifact@v2.2.4
-  #       with:
-  #         # name: bins-${{ matrix.build }}
-  #         path: dist
+      - name: Set macOS artifact name
+        if: matrix.os == 'macos-latest' && matrix.target == 'x86_64-apple-darwin'
+        run: echo "macos_artifact=${{ env.PROJECT_NAME }}-${{ github.ref_name }}-${{ matrix.target }}" >> $GITHUB_OUTPUT
+        id: artifact_name
 
-  # publish:
-  #   name: Publish
-  #   needs: [dist]
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout sources
-  #       uses: actions/checkout@v2
-  #       with:
-  #         submodules: false
+  update-formula:
+    needs: dist
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
 
-  #     - uses: actions/download-artifact@v4
+      - name: Extract version
+        id: extract-version
+        run: echo "tag-name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-  #     - name: Calculate tag name
-  #       run: |
-  #         name=dev
-  #         if [[ $GITHUB_REF == refs/tags/v* ]]; then
-  #           name=${GITHUB_REF:10}
-  #         fi
-  #         echo "val=$name" >> $GITHUB_OUTPUT
-  #         echo "TAG=$name" >> $GITHUB_ENV
-  #       id: tagname
+      - name: Set environment variables
+        run: |
+          echo "PROJECT_NAME=${{ env.PROJECT_NAME }}" >> $GITHUB_ENV
+          echo "REPO_NAME=${{ env.REPO_NAME }}" >> $GITHUB_ENV
 
-  #     - name: Build archive
-  #       shell: bash
-  #       run: |
-  #         set -ex
+      - name: Verify release assets
+        run: |
+          VERSION=${{ steps.extract-version.outputs.tag-name }}
+          REPO=${{ env.REPO_NAME }}
+          PROJECT=${{ env.PROJECT_NAME }}
+          X86_64_URL="https://github.com/${REPO}/releases/download/${VERSION}/${PROJECT}-${VERSION}-x86_64-apple-darwin"
+          AARCH64_URL="https://github.com/${REPO}/releases/download/${VERSION}/${PROJECT}-${VERSION}-aarch64-apple-darwin"
 
-  #         rm -rf tmp
-  #         mkdir tmp
-  #         mkdir dist
+          if curl --output /dev/null --silent --head --fail "$X86_64_URL"; then
+            echo "x86_64 binary exists"
+          else
+            echo "x86_64 binary does not exist"
+            exit 1
+          fi
 
-  #         for dir in bins-* ; do
-  #             platform=${dir#"bins-"}
-  #             unset exe
-  #             if [[ $platform =~ "windows" ]]; then
-  #                 exe=".exe"
-  #             fi
-  #             pkgname=$PROJECT_NAME-$TAG-$platform
-  #             mkdir tmp/$pkgname
-  #             # cp LICENSE README.md tmp/$pkgname
-  #             mv bins-$platform/$BIN_NAME$exe tmp/$pkgname
-  #             chmod +x tmp/$pkgname/$BIN_NAME$exe
+          if curl --output /dev/null --silent --head --fail "$AARCH64_URL"; then
+            echo "aarch64 binary exists"
+          else
+            echo "aarch64 binary does not exist"
+            exit 1
+          fi
 
-  #             if [ "$exe" = "" ]; then
-  #                 tar cJf dist/$pkgname.tar.xz -C tmp $pkgname
-  #             else
-  #                 (cd tmp && 7z a -r ../dist/$pkgname.zip $pkgname)
-  #             fi
-  #         done
+      - name: Update Homebrew formula
+        env:
+          COMMITTER_TOKEN: ${{ secrets.COMMITTER_TOKEN }}
+        run: |
+          VERSION=${{ steps.extract-version.outputs.tag-name }}
+          REPO=${{ env.REPO_NAME }}
+          PROJECT=${{ env.PROJECT_NAME }}
+          X86_64_URL="https://github.com/${REPO}/releases/download/${VERSION}/${PROJECT}-${VERSION}-x86_64-apple-darwin"
+          AARCH64_URL="https://github.com/${REPO}/releases/download/${VERSION}/${PROJECT}-${VERSION}-aarch64-apple-darwin"
 
-  #     - name: Upload binaries to release
-  #       uses: svenstaro/upload-release-action@v2
-  #       with:
-  #         repo_token: ${{ secrets.GITHUB_TOKEN }}
-  #         file: dist/*
-  #         file_glob: true
-  #         tag: ${{ steps.tagname.outputs.val }}
-  #         overwrite: true
+          # 下载并更新formula
+          git clone https://github.com/${{ env.BREW_TAP }}.git homebrew-tap
+          cd homebrew-tap
 
-  #     - name: Extract version
-  #       id: extract-version
-  #       run: |
-  #         echo "tag-name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          cat > Formula/${PROJECT}.rb <<EOL
+          class $(echo $PROJECT | perl -pe 's/(^|-)(\w)/\U$2/g') < Formula
+            desc "A tool for phylogenetic tree construction and pruning based on NCBI taxonomy data and GTDB (Genome Taxonomy Database) data."
+            homepage "https://github.com/${REPO}"
+            version "${VERSION}"
 
-  #     # - uses: mislav/bump-homebrew-formula-action@v1
-  #     #   with:
-  #     #     formula-path: ${{env.PROJECT_NAME}}.rb
-  #     #     homebrew-tap: ${{ env.BREW_TAP }}
-  #     #     download-url: "https://github.com/${{ env.REPO_NAME }}/releases/download/${{ steps.extract-version.outputs.tag-name }}/${{env.PROJECT_NAME}}-${{ steps.extract-version.outputs.tag-name }}-x86_64-macos.tar.xz"
-  #     #     commit-message: updating formula for ${{ env.PROJECT_NAME }}
-  #     #   env:
-  #     #     COMMITTER_TOKEN: ${{ secrets.COMMITTER_TOKEN }}
-  #       #
-  #       # you can use this initial file in your homebrew-tap if you don't have an initial formula:
-  #       # <projectname>.rb
-  #       #
-  #       # class <Projectname capitalized> < Formula
-  #       #   desc "A test formula"
-  #       #   homepage "http://www.example.com"
-  #       #   url "-----"
-  #       #   version "-----"
-  #       #   sha256 "-----"
+            on_macos do
+              if Hardware::CPU.intel?
+                url "${X86_64_URL}"
+                sha256 "$(curl -sL ${X86_64_URL} | shasum -a 256 | cut -d ' ' -f 1)"
+              else
+                url "${AARCH64_URL}"
+                sha256 "$(curl -sL ${AARCH64_URL} | shasum -a 256 | cut -d ' ' -f 1)"
+              end
+            end
 
-  #       #   def install
-  #       #     bin.install "<bin-name>"
-  #       #   end
-  #       # end
+            def install
+              bin.install "${PROJECT}"
+            end
+          end
+          EOL
 
-
-  #     # Uncomment this section if you want to release your package to crates.io
-  #     # Before publishing, make sure you have filled out the following fields:
-  #     # license or license-file, description, homepage, documentation, repository, readme.
-  #     # Read more: https://doc.rust-lang.org/cargo/reference/publishing.html
-
-  #     # - name: Install ${{ matrix.rust }} toolchain
-  #     #   uses: actions-rs/toolchain@v1
-  #     #   with:
-  #     #     profile: minimal
-  #     #     toolchain: ${{ matrix.rust }}
-  #     #     target: ${{ matrix.target }}
-  #     # - run: cargo publish --token ${CRATES_TOKEN}
-  #     #  env:
-  #     #    CRATES_TOKEN: ${{ secrets.CRATES_TOKEN }}
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add Formula/${PROJECT}.rb
+          git commit -m "Updating formula for ${PROJECT} to ${VERSION}"
+          git push https://${{ secrets.COMMITTER_TOKEN }}@github.com/${{ env.BREW_TAP }}.git main
