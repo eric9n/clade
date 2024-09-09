@@ -52,7 +52,7 @@ The Clade tool supports the following commands:
 
 4. Generate Newick format from GTDB database:
    ```
-   clade -t /path/to/taxo gtdb newick --version 220.0 --domain bacteria --input-file input.txt --output output.newick
+   clade -t /path/to/taxo gtdb newick --version 220.0 --domain bacteria --input input.txt --output output.newick
    ```
 
 5. Prune taxonomy tree:

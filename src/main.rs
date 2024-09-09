@@ -91,7 +91,7 @@ enum GtdbSubCommand {
             long,
             help = "Input file path to the data that needs to be analyzed, format: GCF_7312312.0,s__Fen731 sp002068775"
         )]
-        input_file: PathBuf,
+        input: PathBuf,
 
         #[clap(short, long, help = "Output file path for Newick format")]
         output: Option<PathBuf>,
