@@ -1,73 +1,23 @@
-use gtdb_tree::node::Node;
-use rusqlite::{params, params_from_iter, Connection, Result};
+use rusqlite::{params_from_iter, Connection, Result};
 use std::path::PathBuf;
 
-pub fn generate_newick_tree(db: &PathBuf) -> Result<String> {
-    let mut newick = String::new();
+pub fn generate_newick_tree(db: &PathBuf, input_data: Vec<String>, domain: &str) -> Result<String> {
     let conn = Connection::open(db).expect("Failed to open database");
 
-    let mut stmt = conn.prepare(
-        "select node, name, bootstrap, length, parent from gtdb_tree_archaea gta where parent = 0",
-    )?;
-    // Fetch a single row instead of using an iterator
-    let node: Node = stmt.query_row(params![], |row| {
-        let id: usize = row.get(0)?;
-        let name: String = row.get(1)?;
-        let bootstrap: f64 = row.get(2)?;
-        let length: f64 = row.get(3)?;
-        let parent: usize = row.get(4)?;
-        Ok(Node {
-            id,
-            name,
-            bootstrap,
-            length,
-            parent,
-        })
-    })?;
+    let ranks = process_data(input_data, db).expect("Failed to process data");
 
-    build_tree(&mut newick, &node, &conn)?;
+    let table_name = format!("gtdb_tree_{domain}");
+    let leaf_nodes = crate::tree::get_leaf_nodes_by_rank(&conn, &table_name, &ranks)?;
+    let newick_tree = crate::tree::build_pruned_tree(&conn, &table_name, 1, &leaf_nodes)?;
 
-    Ok(newick)
-}
-
-fn build_tree(newick: &mut String, node: &Node, conn: &Connection) -> Result<()> {
-    // Query to get children of the current node
-    let mut stmt = conn.prepare(
-        "SELECT node, name, bootstrap, length, parent FROM gtdb_tree_archaea WHERE parent = ?",
-    )?;
-    let child_iter = stmt.query_map(params![node.id], |row| {
-        let id: usize = row.get(0)?;
-        let name: String = row.get(1)?;
-        let bootstrap: f64 = row.get(2)?;
-        let length: f64 = row.get(3)?;
-        let parent: usize = row.get(4)?;
-        let node = Node {
-            id,
-            name,
-            bootstrap,
-            length,
-            parent,
-        };
-        Ok(node)
-    })?;
-
-    let mut children = Vec::new();
-    for child in child_iter {
-        children.push(child?);
+    if let Some(root) = newick_tree {
+        let mut newick = String::new();
+        crate::tree::write_node_to_newick(&root, &mut newick);
+        newick.push(';');
+        Ok(newick)
+    } else {
+        Ok("".into())
     }
-
-    if !children.is_empty() {
-        newick.push('(');
-        for (i, child) in children.iter().enumerate() {
-            build_tree(newick, child, conn)?;
-            if i < children.len() - 1 {
-                newick.push(',');
-            }
-        }
-        newick.push_str(&format!("){}", node.name));
-    }
-
-    Ok(())
 }
 
 pub fn process_data(data: Vec<String>, db: &PathBuf) -> std::io::Result<Vec<String>> {

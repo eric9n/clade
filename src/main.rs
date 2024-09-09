@@ -69,6 +69,8 @@ enum GtdbSubCommand {
     Newick {
         #[clap(short, long, help = "GTDB tree version to generate Newick format")]
         version: String,
+        #[clap(short, long, help = "Domain to generate Newick format")]
+        domain: String,
 
         #[clap(
             short,
@@ -76,6 +78,9 @@ enum GtdbSubCommand {
             help = "Input file path to the data that needs to be analyzed, format: GCF_7312312.0,s__Fen731 sp002068775"
         )]
         input_file: PathBuf,
+
+        #[clap(short, long, help = "Output file path for Newick format")]
+        output: Option<PathBuf>,
     },
 }
 
@@ -125,6 +130,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             GtdbSubCommand::Newick {
                 version,
                 input_file,
+                domain,
+                output,
             } => {
                 let db = taxo_path.join(format!("{version}.db"));
                 println!("Generating Newick format for GTDB version: {version}");
@@ -134,8 +141,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                     .map(|s| s.trim().to_string())
                     .collect::<Vec<String>>();
 
-                let newick = clade::generate::process_data(data, &db)?;
-                println!("{:?}", newick);
+                let newick = clade::generate::generate_newick_tree(&db, data, &domain)?;
+                if let Some(output) = output {
+                    let mut file = File::create(output)?;
+                    file.write_all(newick.as_bytes())?;
+                } else {
+                    println!("{}", newick);
+                }
             }
         },
         Command::Generate => ncbi::print_taxonomy_summary(&taxo_path)?,
