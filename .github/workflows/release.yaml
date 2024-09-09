@@ -9,7 +9,7 @@ on:
     ## - release
 
 env:
-  BIN_NAME: clade
+  # BIN_NAME: clade
   PROJECT_NAME: clade
   REPO_NAME: eric9n/clade
   # BREW_TAP: eric9n/homebrew-tap
@@ -92,9 +92,9 @@ jobs:
         run: |
           mkdir dist
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp "target/${{ matrix.target }}/release/$BIN_NAME.exe" "dist/"
+            cp "target/${{ matrix.target }}/release/${{ matrix.target }}.exe" "dist/"
           else
-            cp "target/${{ matrix.target }}/release/$BIN_NAME" "dist/"
+            cp "target/${{ matrix.target }}/release/${{ matrix.target }}" "dist/"
           fi
 
       # Set up the GitHub CLI
@@ -119,13 +119,8 @@ jobs:
 
       - name: Upload Release Asset
         run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            ASSET_NAME="${{ env.BIN_NAME }}.exe"
-          else
-            ASSET_NAME="${{ env.BIN_NAME }}"
-          fi
           gh release upload ${{ github.ref_name }} \
-            "./dist/$ASSET_NAME" \
+            "./dist/${{ matrix.target }}" \
             --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
