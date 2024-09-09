@@ -143,14 +143,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
             GtdbSubCommand::Newick {
                 version,
-                input_file,
+                input,
                 domain,
                 output,
             } => {
                 let db = taxo_path.join(format!("{version}.db"));
                 println!("Generating Newick format for GTDB version: {version}");
                 // Read the input file and parse it into a list based on commas
-                let data = std::fs::read_to_string(&input_file)?
+                let data = std::fs::read_to_string(&input)?
                     .split(',')
                     .map(|s| s.trim().to_string())
                     .collect::<Vec<String>>();
