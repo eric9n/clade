@@ -12,6 +12,13 @@ A tool for phylogenetic tree construction and pruning based on NCBI taxonomy dat
 6. Support for both NCBI and GTDB data sources
 
 
+## Installation
+
+### Homebrew
+```
+brew install eric9n/tap/clade
+```
+
 ## Usage
 
 The Clade tool supports the following commands:
