@@ -160,7 +160,7 @@ jobs:
           VERSION=${{ steps.extract-version.outputs.tag-name }}
           REPO=${{ env.REPO_NAME }}
           PROJECT=${{ env.PROJECT_NAME }}
-          DESC=${{ env.DESC }}
+          DESC="${{ env.DESC }}"
           X86_64_URL="https://github.com/${REPO}/releases/download/${VERSION}/${PROJECT}-${VERSION}-x86_64-apple-darwin"
           AARCH64_URL="https://github.com/${REPO}/releases/download/${VERSION}/${PROJECT}-${VERSION}-aarch64-apple-darwin"
 
