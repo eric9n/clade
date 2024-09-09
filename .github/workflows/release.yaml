@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false # don't fail other jobs if one fails
       matrix:
-        build: [x86_64-linux, x86_64-macos, x86_64-windows, aarch64-macos, x86_64-win-gnu] # Added platforms
+        build: [x86_64-linux, x86_64-macos, x86_64-windows, aarch64-macos] # Added platforms
         include:
         - build: x86_64-linux
           os: ubuntu-latest
@@ -47,11 +47,6 @@ jobs:
           os: macos-latest
           rust: stable
           target: aarch64-apple-darwin
-          cross: false
-        - build: x86_64-win-gnu
-          os: windows-2019
-          rust: stable
-          target: x86_64-pc-windows-gnu
           cross: false
         # - build: x86_64-win-gnu
         #   os: windows-2019
@@ -94,27 +89,27 @@ jobs:
         shell: bash
         run: |
           mkdir dist
-          if [ "${{ matrix.os }}" = "windows-2019" ]; then
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
             cp "target/${{ matrix.target }}/release/$BIN_NAME.exe" "dist/"
           else
             cp "target/${{ matrix.target }}/release/$BIN_NAME" "dist/"
           fi
 
       # Set up the GitHub CLI
-      - name: Install GitHub CLI
+      - name: Install GitHub CLI (macOS)
         run: |
           brew install gh
-        if: matrix.platform == 'macos-latest' || matrix.platform == 'macos-13'
+        if: matrix.os == 'macos-latest'
 
-      - name: Install GitHub CLI
+      - name: Install GitHub CLI (Ubuntu)
         run: |
           sudo apt install -y gh
-        if: matrix.platform == 'ubuntu-20.04'
+        if: matrix.os == 'ubuntu-latest'
 
-      - name: Install GitHub CLI
+      - name: Install GitHub CLI (Windows)
         run: |
           choco install gh
-        if: matrix.platform == 'windows-latest'
+        if: matrix.os == 'windows-latest'
 
       # Log in to the GitHub CLI
       - name: Login to GitHub CLI
