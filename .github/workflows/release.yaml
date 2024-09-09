@@ -16,6 +16,8 @@ env:
 
 jobs:
   dist:
+    permissions:
+      contents: write
     name: Dist
     runs-on: ${{ matrix.os }}
     strategy:
