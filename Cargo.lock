@@ -203,7 +203,7 @@ dependencies = [
 
 [[package]]
 name = "clade"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "clap",
@@ -450,9 +450,9 @@ checksum = "40ecd4077b5ae9fd2e9e169b102c6c330d0605168eb0e8bf79952b256dbefffd"
 
 [[package]]
 name = "gtdb_tree"
-version = "0.1.8"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32f2ba1e67d6dd6cf95e3a75fbb33ef18ee9f5725064f6de8eb403fc78810ecc"
+checksum = "674bee06b87583f5bf5d7e4659b6d3fd6e34ffa8f67dcb402f9638cd86faa38c"
 dependencies = [
  "memchr",
  "pyo3-build-config",

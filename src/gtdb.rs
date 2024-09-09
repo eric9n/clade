@@ -397,7 +397,8 @@ pub fn parse_tree(db: &PathBuf, domain_files: &Vec<DomainFile>) -> io::Result<()
         reader.read_to_string(&mut buffer)?;
 
         // Process each line in the tree file
-        let nodes = gtdb_tree::tree::parse_tree(&buffer).expect("Failed to parse tree");
+        let nodes = gtdb_tree::tree::parse_tree(&buffer, gtdb_tree::tree::NodeParser::default())
+            .expect("Failed to parse tree");
         conn.execute(&format!("DELETE FROM {}", table_name), [])
             .expect(&format!("Failed to truncate table {}", table_name));
 
